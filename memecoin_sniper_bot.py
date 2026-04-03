@@ -21,31 +21,35 @@ CHAT_ID     = os.environ.get("CHAT_ID",     "PASTE_CHAT_ID")
 BIRDEYE_KEY = os.environ.get("BIRDEYE_KEY", "")
 
 WALLETS = [
-    # "FULL_SOLANA_WALLET_ADDRESS",
+    # "E1zGzPY1WdJoHSzf928NWTkZjcAhnUaN1xzF6BhCTsvS"
+      "J9TYAsWWidbrcZybmLSfrLzryANf4CgJBLdvwdGuC8MB"
+      "ALJ4P5QNyHeLEjpKGmA1eUfJHSEGQMjY8HLnDkSgjczb"
+      "91cJmU5pLnmSPuynUJkSz3WSGc8yzxMGoJ6RLz8ZeU4E"
+      "4sgd7efDkAWuZWE9BYHLyXHuPu8V8DmvvZro45BN8mdm",
 ]
 
 # ─────────────────────────────────────────────
 #  PUMP.FUN FILTERS — Ultra early, high activity
 # ─────────────────────────────────────────────
 
-PUMP_MIN_SCORE      = 8        # High quality only
-PUMP_MAX_AGE_MIN    = 30       # Only last 30 min (ultra fresh)
+PUMP_MIN_SCORE      = 6        # High quality only
+PUMP_MAX_AGE_MIN    = 60       # Only last 30 min (ultra fresh)
 PUMP_MIN_VOLUME_24H = 10_000   # $10k volume
-PUMP_MIN_VOLUME_1H  = 5_000    # $5k last hour — active token
-PUMP_MIN_BUYS       = 50       # 50+ real buyers
-PUMP_MIN_BUY_RATIO  = 1.5      # 1.5x more buys than sells
+PUMP_MIN_VOLUME_1H  = 1_000    # $1k last hour — active token
+PUMP_MIN_BUYS       = 20       # 20+ real buyers
+PUMP_MIN_BUY_RATIO  = 1.3      # 1.3x more buys than sells
 PUMP_MAX_MC         = 200_000  # Max $200k MC — true early
 
 # ─────────────────────────────────────────────
 #  REAL DEX FILTERS — Raydium / Orca / Meteora
 # ─────────────────────────────────────────────
 
-DEX_MIN_SCORE       = 8        # High quality only
+DEX_MIN_SCORE       = 6        # High quality only
 DEX_MAX_AGE_MIN     = 120      # Last 2 hours
-DEX_MIN_LIQUIDITY   = 50_000   # $50k real liquidity
+DEX_MIN_LIQUIDITY   = 30_000   # $30k real liquidity
 DEX_MIN_VOLUME_24H  = 20_000   # $20k volume
-DEX_MIN_VOLUME_1H   = 10_000   # $10k last hour
-DEX_MIN_BUYS        = 50       # 50+ buyers
+DEX_MIN_VOLUME_1H   = 2_000    # $2k last hour
+DEX_MIN_BUYS        = 20       # 20+ buyers
 DEX_MIN_BUY_RATIO   = 1.5      # 1.5x buy ratio
 DEX_MIN_MC          = 10_000   # Min $10k
 DEX_MAX_MC          = 10_000_000  # Max $10M
