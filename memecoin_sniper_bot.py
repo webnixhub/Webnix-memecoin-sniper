@@ -37,27 +37,27 @@ WALLETS = [
 #  PUMP.FUN FILTERS
 # ─────────────────────────────────────────────
 
-PUMP_MIN_SCORE      = 6
-PUMP_MAX_AGE_MIN    = 60
-PUMP_MIN_VOLUME_24H = 5_000
+PUMP_MIN_SCORE      = 4
+PUMP_MAX_AGE_MIN    = 120
+PUMP_MIN_VOLUME_24H = 3_000
 PUMP_MIN_VOLUME_1H  = 1_000
-PUMP_MIN_BUYS       = 20
-PUMP_MIN_BUY_RATIO  = 1.3
-PUMP_MAX_MC         = 500_000
+PUMP_MIN_BUYS       = 15
+PUMP_MIN_BUY_RATIO  = 1.2
+PUMP_MAX_MC         = 1_000_000
 
 # ─────────────────────────────────────────────
 #  REAL DEX FILTERS
 # ─────────────────────────────────────────────
 
-DEX_MIN_SCORE       = 6
-DEX_MAX_AGE_MIN     = 120
-DEX_MIN_LIQUIDITY   = 30_000
-DEX_MIN_VOLUME_24H  = 10_000
-DEX_MIN_VOLUME_1H   = 2_000
+DEX_MIN_SCORE       = 5
+DEX_MAX_AGE_MIN     = 240
+DEX_MIN_LIQUIDITY   = 20_000
+DEX_MIN_VOLUME_24H  = 5_000
+DEX_MIN_VOLUME_1H   = 1_000
 DEX_MIN_BUYS        = 20
-DEX_MIN_BUY_RATIO   = 1.3
-DEX_MIN_MC          = 10_000
-DEX_MAX_MC          = 10_000_000
+DEX_MIN_BUY_RATIO   = 1.2
+DEX_MIN_MC          = 5_000
+DEX_MAX_MC          = 50_000_000
 
 # ─────────────────────────────────────────────
 #  DEX CLASSIFICATION
