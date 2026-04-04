@@ -1,9 +1,14 @@
 """
 ╔══════════════════════════════════════════════════════════╗
-║       MEMECOIN PRO SNIPER BOT v4.3                       ║
-║       DUAL MODE: Pump.fun Early + Raydium/Orca Strong    ║
-║       RISK ENGINE: SAFE / RISKY / GAMBLE Auto Tags       ║
-║       WHALE CONCENTRATION DETECTION                      ║
+║       MEMECOIN PRO SNIPER BOT v4.4                       ║
+║       THREE MODE DETECTION SYSTEM                        ║
+║                                                          ║
+║  MODE 1 — PUMP.FUN   : Ultra early gems <60m            ║
+║  MODE 2 — REAL DEX   : Raydium/Orca new pairs           ║
+║  MODE 3 — MOMENTUM   : Big coins $500k+ sudden spike    ║
+║                                                          ║
+║  RISK ENGINE: SAFE / RISKY / GAMBLE (GAMBLE filtered)   ║
+║  WHALE CONCENTRATION DETECTION                          ║
 ╚══════════════════════════════════════════════════════════╝
 """
 
@@ -22,7 +27,7 @@ CHAT_ID     = os.environ.get("CHAT_ID",     "PASTE_CHAT_ID")
 BIRDEYE_KEY = os.environ.get("BIRDEYE_KEY", "")
 
 # ─────────────────────────────────────────────
-#  WHALE WALLETS TO TRACK
+#  WHALE WALLETS
 # ─────────────────────────────────────────────
 
 WALLETS = [
@@ -34,30 +39,49 @@ WALLETS = [
 ]
 
 # ─────────────────────────────────────────────
-#  PUMP.FUN FILTERS
+#  MODE 1 — PUMP.FUN FILTERS
+#  Ultra early gems on bonding curve
 # ─────────────────────────────────────────────
 
-PUMP_MIN_SCORE      = 4
+PUMP_MIN_SCORE      = 5
 PUMP_MAX_AGE_MIN    = 120
-PUMP_MIN_VOLUME_24H = 3_000
-PUMP_MIN_VOLUME_1H  = 1_000
-PUMP_MIN_BUYS       = 15
+PUMP_MIN_VOLUME_24H = 1_000
+PUMP_MIN_VOLUME_1H  = 500
+PUMP_MIN_BUYS       = 10
 PUMP_MIN_BUY_RATIO  = 1.2
 PUMP_MAX_MC         = 1_000_000
 
 # ─────────────────────────────────────────────
-#  REAL DEX FILTERS
+#  MODE 2 — REAL DEX FILTERS
+#  New pairs on Raydium / Orca / Meteora
 # ─────────────────────────────────────────────
 
 DEX_MIN_SCORE       = 5
 DEX_MAX_AGE_MIN     = 240
-DEX_MIN_LIQUIDITY   = 20_000
-DEX_MIN_VOLUME_24H  = 5_000
-DEX_MIN_VOLUME_1H   = 1_000
-DEX_MIN_BUYS        = 20
+DEX_MIN_LIQUIDITY   = 5_000
+DEX_MIN_VOLUME_24H  = 2_000
+DEX_MIN_VOLUME_1H   = 500
+DEX_MIN_BUYS        = 10
 DEX_MIN_BUY_RATIO   = 1.2
-DEX_MIN_MC          = 5_000
+DEX_MIN_MC          = 1_000
 DEX_MAX_MC          = 50_000_000
+
+# ─────────────────────────────────────────────
+#  MODE 3 — MOMENTUM FILTERS
+#  Established coins with sudden volume spike
+#  $500k+ MC, $50k+ liquidity, activity surge
+# ─────────────────────────────────────────────
+
+MOM_MIN_SCORE         = 6
+MOM_MIN_MC            = 500_000      # At least $500k MC
+MOM_MAX_MC            = 50_000_000   # Max $50M (not mega cap)
+MOM_MIN_LIQUIDITY     = 50_000       # Real liquidity $50k+
+MOM_MIN_VOLUME_1H     = 20_000       # $20k in last hour
+MOM_MIN_VOLUME_5M     = 5_000        # $5k in last 5 min (spike)
+MOM_MIN_BUYS          = 50           # Active — 50+ buyers
+MOM_MIN_BUY_RATIO     = 1.3          # More buys than sells
+MOM_VOL_SPIKE_RATIO   = 3.0          # 5m vol must be 3x normal rate
+MOM_MIN_PRICE_CHANGE  = 5.0          # At least +5% in 1h
 
 # ─────────────────────────────────────────────
 #  DEX CLASSIFICATION
@@ -95,15 +119,16 @@ log = logging.getLogger("ProSniper")
 seen_tokens    = set()
 wallet_tx_seen = {}
 stats = {
-    "cycles"       : 0,
-    "alerts_pump"  : 0,
-    "alerts_dex"   : 0,
-    "pairs_scanned": 0,
-    "rugs_skipped" : 0,
-    "safe_count"   : 0,
-    "risky_count"  : 0,
-    "gamble_count" : 0,
-    "start_time"   : time.time(),
+    "cycles"        : 0,
+    "alerts_pump"   : 0,
+    "alerts_dex"    : 0,
+    "alerts_momentum": 0,
+    "pairs_scanned" : 0,
+    "rugs_skipped"  : 0,
+    "gamble_skipped": 0,
+    "safe_count"    : 0,
+    "risky_count"   : 0,
+    "start_time"    : time.time(),
 }
 
 # ─────────────────────────────────────────────
@@ -160,6 +185,17 @@ def get_dex_type(pair) -> str:
         return "real"
     return "other"
 
+def get_vol_spike_ratio(pair) -> float:
+    """How much faster is 5m volume vs normal 5m rate from 1h."""
+    vol1  = get_volume(pair, "h1")
+    vol5m = get_volume(pair, "m5")
+    if vol1 <= 0:
+        return 0.0
+    normal_5m = vol1 / 12  # expected 5m vol based on 1h rate
+    if normal_5m <= 0:
+        return 0.0
+    return vol5m / normal_5m
+
 # ─────────────────────────────────────────────
 #  TELEGRAM
 # ─────────────────────────────────────────────
@@ -183,18 +219,23 @@ def send_telegram(msg: str, silent: bool = False):
 def send_startup():
     wallets_short = [f"{w[:6]}...{w[-4:]}" for w in WALLETS]
     msg = (
-        "PRO SNIPER v4.3 - RISK ENGINE\n"
+        "PRO SNIPER v4.4 - THREE MODE\n"
         "================================\n\n"
-        "PUMP.FUN:\n"
-        f"  Score: {PUMP_MIN_SCORE}+/15 | Age: <{PUMP_MAX_AGE_MIN}m\n"
-        f"  Vol1h: ${PUMP_MIN_VOLUME_1H:,}+ | Buys: {PUMP_MIN_BUYS}+\n"
-        f"  Ratio: {PUMP_MIN_BUY_RATIO}x+ | MC: <${PUMP_MAX_MC:,}\n\n"
-        "REAL DEX:\n"
-        f"  Score: {DEX_MIN_SCORE}+/15 | Liq: ${DEX_MIN_LIQUIDITY:,}+\n"
-        f"  Vol1h: ${DEX_MIN_VOLUME_1H:,}+ | Buys: {DEX_MIN_BUYS}+\n\n"
-        "RISK TAGS: SAFE / RISKY / GAMBLE\n"
-        "WHALE DETECTION: ON\n\n"
-        f"Tracking {len(WALLETS)} wallets:\n"
+        "MODE 1 - PUMP.FUN (Ultra Early):\n"
+        f"  Score {PUMP_MIN_SCORE}+ | Age <{PUMP_MAX_AGE_MIN}m\n"
+        f"  Vol1h ${PUMP_MIN_VOLUME_1H:,}+ | Buys {PUMP_MIN_BUYS}+\n"
+        f"  MC <${PUMP_MAX_MC:,}\n\n"
+        "MODE 2 - REAL DEX (New Pairs):\n"
+        f"  Score {DEX_MIN_SCORE}+ | Liq ${DEX_MIN_LIQUIDITY:,}+\n"
+        f"  Vol1h ${DEX_MIN_VOLUME_1H:,}+ | Buys {DEX_MIN_BUYS}+\n\n"
+        "MODE 3 - MOMENTUM (Big Coins):\n"
+        f"  Score {MOM_MIN_SCORE}+ | MC ${MOM_MIN_MC:,}+\n"
+        f"  Liq ${MOM_MIN_LIQUIDITY:,}+ | Vol1h ${MOM_MIN_VOLUME_1H:,}+\n"
+        f"  Vol5m ${MOM_MIN_VOLUME_5M:,}+ | Spike {MOM_VOL_SPIKE_RATIO}x+\n"
+        f"  Buys {MOM_MIN_BUYS}+ | 1h change +{MOM_MIN_PRICE_CHANGE}%+\n\n"
+        "GAMBLE signals: AUTO FILTERED\n"
+        "RISK TAGS: SAFE / RISKY only\n\n"
+        f"Wallets tracked: {len(WALLETS)}\n"
         + "\n".join(wallets_short) + "\n\n"
         "Scanning ALL Solana DEXes..."
     )
@@ -335,22 +376,10 @@ def fetch_all_pairs() -> list:
                 birdeye_pairs.append(pair)
                 existing.add(addr)
 
-    all_pairs  = dex_pairs + birdeye_pairs
-    now_ms     = int(time.time() * 1000)
-    max_age_ms = max(PUMP_MAX_AGE_MIN, DEX_MAX_AGE_MIN) * 60 * 1000
-
-    filtered = []
-    for p in all_pairs:
-        created = p.get("pairCreatedAt")
-        if created:
-            if (now_ms - int(created)) <= max_age_ms:
-                filtered.append(p)
-        else:
-            filtered.append(p)
-
-    stats["pairs_scanned"] += len(filtered)
-    log.info(f"Total: {len(dex_pairs)} DEX + {len(birdeye_pairs)} Birdeye = {len(filtered)} in window")
-    return filtered
+    all_pairs = dex_pairs + birdeye_pairs
+    stats["pairs_scanned"] += len(all_pairs)
+    log.info(f"Total: {len(dex_pairs)} DEX + {len(birdeye_pairs)} Birdeye = {len(all_pairs)}")
+    return all_pairs
 
 # ─────────────────────────────────────────────
 #  RUGCHECK
@@ -375,11 +404,10 @@ def is_rug(token_address: str) -> bool:
         return False
 
 # ─────────────────────────────────────────────
-#  WHALE CONCENTRATION CHECK
+#  WHALE CONCENTRATION
 # ─────────────────────────────────────────────
 
 def check_whale_concentration(token_address: str) -> dict:
-    """Check top holder concentration via Birdeye."""
     if not BIRDEYE_KEY:
         return {}
     try:
@@ -396,16 +424,13 @@ def check_whale_concentration(token_address: str) -> dict:
         )
         if r.status_code != 200:
             return {}
-
         holders = r.json().get("data", {}).get("items", []) or []
         if not holders:
             return {}
-
         top1  = safe_float(holders[0].get("percentage", 0)) if len(holders) > 0 else 0
         top3  = sum(safe_float(h.get("percentage", 0)) for h in holders[:3])
         top5  = sum(safe_float(h.get("percentage", 0)) for h in holders[:5])
         top10 = sum(safe_float(h.get("percentage", 0)) for h in holders[:10])
-
         return {
             "top1" : round(top1, 1),
             "top3" : round(top3, 1),
@@ -419,17 +444,12 @@ def check_whale_concentration(token_address: str) -> dict:
 #  RISK ENGINE
 # ─────────────────────────────────────────────
 
-def assess_risk(pair, dex_type: str, score: int, holders: dict) -> tuple:
-    """
-    Returns (tag, emoji, reasons, risk_points)
-    tag = SAFE / RISKY / GAMBLE
-    """
-    mc    = safe_float(pair.get("fdv"))
-    liq   = get_liquidity(pair)
-    age   = get_pair_age_minutes(pair)
-    vol24 = get_volume(pair, "h24")
-    vol5m = get_volume(pair, "m5")
-    vol1  = get_volume(pair, "h1")
+def assess_risk(pair, dex_type: str, mode: str, score: int, holders: dict) -> tuple:
+    mc     = safe_float(pair.get("fdv"))
+    liq    = get_liquidity(pair)
+    age    = get_pair_age_minutes(pair)
+    vol24  = get_volume(pair, "h24")
+    vol5m  = get_volume(pair, "m5")
 
     txns24 = get_txns(pair, "h24")
     buys   = safe_float(txns24.get("buys", 0))
@@ -440,72 +460,79 @@ def assess_risk(pair, dex_type: str, score: int, holders: dict) -> tuple:
     risk_pts = 0
     reasons  = []
 
-    # ── Whale concentration (from Birdeye holders) ──
+    # Whale concentration
     if holders:
-        top1  = holders.get("top1", 0)
-        top5  = holders.get("top5", 0)
-
+        top1 = holders.get("top1", 0)
+        top5 = holders.get("top5", 0)
         if top1 > 30:
-            risk_pts += 3; reasons.append(f"Top1 holds {top1}%")
+            risk_pts += 3; reasons.append(f"Top1={top1}%")
         elif top1 > 15:
-            risk_pts += 2; reasons.append(f"Top1 holds {top1}%")
+            risk_pts += 2; reasons.append(f"Top1={top1}%")
         elif top1 > 8:
-            risk_pts += 1; reasons.append(f"Top1 holds {top1}%")
-
+            risk_pts += 1; reasons.append(f"Top1={top1}%")
         if top5 > 60:
-            risk_pts += 2; reasons.append(f"Top5 hold {top5}%")
+            risk_pts += 2; reasons.append(f"Top5={top5}%")
         elif top5 > 40:
-            risk_pts += 1; reasons.append(f"Top5 hold {top5}%")
+            risk_pts += 1; reasons.append(f"Top5={top5}%")
 
-    # ── Sudden volume spike (pump & dump risk) ──
+    # Sudden dump risk (5m vol spike)
     if vol24 > 0 and vol5m / (vol24 + 1) > 0.6:
         risk_pts += 2; reasons.append("Vol spike >60% in 5m")
     elif vol24 > 0 and vol5m / (vol24 + 1) > 0.4:
-        risk_pts += 1; reasons.append("Vol spike 40%+ in 5m")
+        risk_pts += 1; reasons.append("Vol spike 40%+")
 
-    # ── Buy concentration (one whale buying fast) ──
+    # Buy concentration
     if buys > 0 and buys5 / (buys + 1) > 0.5:
-        risk_pts += 2; reasons.append("Whale buy concentration")
-    elif buys > 0 and buys5 / (buys + 1) > 0.3:
-        risk_pts += 1; reasons.append("Buy concentration")
+        risk_pts += 2; reasons.append("Buy concentration")
 
-    # ── Age risk ──
-    if age < 5:
-        risk_pts += 2; reasons.append("Age <5m")
-    elif age < 15:
-        risk_pts += 1; reasons.append("Age <15m")
+    # Age risk (pump/dex only — momentum tokens are established)
+    if mode != "momentum":
+        if age < 5:
+            risk_pts += 2; reasons.append("Age <5m")
+        elif age < 15:
+            risk_pts += 1; reasons.append("Age <15m")
 
-    # ── Market cap risk ──
-    if 0 < mc < 10_000:
-        risk_pts += 3; reasons.append("MC <$10k")
-    elif 0 < mc < 30_000:
-        risk_pts += 2; reasons.append("MC <$30k")
-    elif 0 < mc < 100_000:
-        risk_pts += 1; reasons.append("MC <$100k")
+    # MC risk
+    if mode == "momentum":
+        # Momentum tokens are established — MC is a positive signal
+        if mc >= 1_000_000:
+            risk_pts -= 1  # $1M+ MC = more stable
+    else:
+        if 0 < mc < 10_000:
+            risk_pts += 3; reasons.append("MC <$10k")
+        elif 0 < mc < 30_000:
+            risk_pts += 2; reasons.append("MC <$30k")
+        elif 0 < mc < 100_000:
+            risk_pts += 1; reasons.append("MC <$100k")
 
-    # ── Liquidity risk ──
-    if dex_type == "pump":
+    # Liquidity risk
+    if mode == "momentum":
+        if liq >= 100_000:
+            risk_pts -= 1; reasons.append("Strong liq")
+        elif liq < 50_000:
+            risk_pts += 1; reasons.append("Liq <$50k")
+    elif dex_type == "pump":
         risk_pts += 1; reasons.append("Bonding curve")
     elif liq < 20_000:
         risk_pts += 2; reasons.append("Liq <$20k")
     elif liq < 50_000:
         risk_pts += 1; reasons.append("Liq <$50k")
 
-    # ── Sell pressure ──
+    # Sell pressure
     if sells > 0 and buys / (sells + 1) < 1.2:
-        risk_pts += 1; reasons.append("Weak buy ratio")
+        risk_pts += 1; reasons.append("Weak ratio")
 
-    # ── High score reduces risk ──
+    # Score bonus
     if score >= 12:
         risk_pts -= 2
     elif score >= 10:
         risk_pts -= 1
 
-    # ── Real DEX with high liq = safer ──
+    # Real DEX with good liq = safer
     if dex_type == "real" and liq >= 50_000:
         risk_pts -= 1
 
-    risk_pts = max(0, risk_pts)  # floor at 0
+    risk_pts = max(0, risk_pts)
 
     if risk_pts <= 2:
         tag   = "SAFE"
@@ -521,7 +548,7 @@ def assess_risk(pair, dex_type: str, score: int, holders: dict) -> tuple:
     return tag, emoji, reason_str, risk_pts
 
 # ─────────────────────────────────────────────
-#  FILTERS
+#  THREE FILTER MODES
 # ─────────────────────────────────────────────
 
 def passes_pump_filters(pair) -> tuple:
@@ -545,7 +572,6 @@ def passes_pump_filters(pair) -> tuple:
         return False, f"Buys {int(buys)}"
     if sells > 0 and buys / sells < PUMP_MIN_BUY_RATIO:
         return False, f"Ratio {buys/(sells+1):.1f}x"
-
     return True, ""
 
 
@@ -575,14 +601,99 @@ def passes_dex_filters(pair) -> tuple:
         return False, f"Buys {int(buys)}"
     if sells > 0 and buys / sells < DEX_MIN_BUY_RATIO:
         return False, f"Ratio {buys/(sells+1):.1f}x"
+    return True, ""
+
+
+def passes_momentum_filters(pair) -> tuple:
+    """
+    Mode 3 — Big established coins with sudden activity surge.
+    Detects when a $500k+ MC token suddenly gets volume spike.
+    """
+    mc      = safe_float(pair.get("fdv"))
+    liq     = get_liquidity(pair)
+    vol1    = get_volume(pair, "h1")
+    vol5m   = get_volume(pair, "m5")
+    ch1     = get_price_change(pair, "h1")
+    txns24  = get_txns(pair, "h24")
+    txns5   = get_txns(pair, "m5")
+    buys    = safe_float(txns24.get("buys", 0))
+    sells   = safe_float(txns24.get("sells", 0))
+    buys5   = safe_float(txns5.get("buys", 0))
+    sells5  = safe_float(txns5.get("sells", 0))
+    spike   = get_vol_spike_ratio(pair)
+
+    # MC must be established
+    if mc < MOM_MIN_MC:
+        return False, f"MC ${mc:,.0f} < ${MOM_MIN_MC:,}"
+    if mc > MOM_MAX_MC:
+        return False, f"MC too large"
+
+    # Must have real liquidity
+    if liq < MOM_MIN_LIQUIDITY:
+        return False, f"Liq ${liq:,.0f} < ${MOM_MIN_LIQUIDITY:,}"
+
+    # Must have 1h volume activity
+    if vol1 < MOM_MIN_VOLUME_1H:
+        return False, f"Vol1h ${vol1:.0f}"
+
+    # Must have 5m spike
+    if vol5m < MOM_MIN_VOLUME_5M:
+        return False, f"Vol5m ${vol5m:.0f}"
+
+    # Volume spike ratio check — 5m must be 3x normal rate
+    if spike < MOM_VOL_SPIKE_RATIO:
+        return False, f"Spike {spike:.1f}x < {MOM_VOL_SPIKE_RATIO}x"
+
+    # Must have active buyers
+    if buys < MOM_MIN_BUYS:
+        return False, f"Buys {int(buys)}"
+
+    # Buy pressure
+    if sells > 0 and buys / sells < MOM_MIN_BUY_RATIO:
+        return False, f"Ratio {buys/(sells+1):.1f}x"
+
+    # Must be moving up
+    if ch1 < MOM_MIN_PRICE_CHANGE:
+        return False, f"1h change {ch1:+.1f}%"
+
+    # 5m buy activity check
+    if buys5 < 10:
+        return False, f"5m buys {int(buys5)}"
 
     return True, ""
+
+
+def detect_mode(pair) -> str:
+    """
+    Determine which mode to use for this pair.
+    Momentum mode checked FIRST if MC is high enough.
+    """
+    mc      = safe_float(pair.get("fdv"))
+    liq     = get_liquidity(pair)
+    dex     = get_dex_type(pair)
+    vol5m   = get_volume(pair, "m5")
+    spike   = get_vol_spike_ratio(pair)
+
+    # If MC > $500k AND liq > $50k AND volume spike — try momentum mode
+    if mc >= MOM_MIN_MC and liq >= MOM_MIN_LIQUIDITY and spike >= MOM_VOL_SPIKE_RATIO:
+        return "momentum"
+
+    # Pump.fun early gem
+    if dex == "pump":
+        return "pump"
+
+    # Real DEX new pair
+    if dex == "real":
+        return "real"
+
+    # Unknown DEX — try pump filters
+    return "pump"
 
 # ─────────────────────────────────────────────
 #  SCORE ENGINE (max 15)
 # ─────────────────────────────────────────────
 
-def score_token(pair, dex_type: str) -> tuple:
+def score_token(pair, dex_type: str, mode: str) -> tuple:
     score   = 0
     reasons = []
 
@@ -594,6 +705,7 @@ def score_token(pair, dex_type: str) -> tuple:
         vol5m = get_volume(pair, "m5")
         ch1   = get_price_change(pair, "h1")
         age   = get_pair_age_minutes(pair)
+        spike = get_vol_spike_ratio(pair)
 
         txns24 = get_txns(pair, "h24")
         buys   = safe_float(txns24.get("buys", 0))
@@ -602,52 +714,91 @@ def score_token(pair, dex_type: str) -> tuple:
         buys5  = safe_float(txns5.get("buys", 0))
         sells5 = safe_float(txns5.get("sells", 0))
 
-        # Liquidity (real DEX only)
-        if dex_type == "real":
-            if liq >= 30_000:  score += 1; reasons.append("Liq>30k")
-            if liq >= 75_000:  score += 1; reasons.append("Liq>75k")
-            if liq >= 150_000: score += 1; reasons.append("Liq>150k")
+        if mode == "momentum":
+            # ── MOMENTUM scoring ──
 
-        # Volume 24h
-        if vol24 >= 10_000:  score += 1; reasons.append("Vol>10k")
-        if vol24 >= 50_000:  score += 1; reasons.append("Vol>50k")
-        if vol24 >= 200_000: score += 1; reasons.append("Vol>200k")
+            # Liquidity strength
+            if liq >= 200_000: score += 2; reasons.append("Liq>200k")
+            elif liq >= 100_000: score += 1; reasons.append("Liq>100k")
 
-        # Volume 1h
-        if vol1 >= 5_000:  score += 1; reasons.append("Vol1h>5k")
-        if vol1 >= 30_000: score += 1; reasons.append("Vol1h>30k")
+            # Volume 1h
+            if vol1 >= 100_000: score += 2; reasons.append("Vol1h>100k")
+            elif vol1 >= 50_000: score += 1; reasons.append("Vol1h>50k")
 
-        # Volume spike 5m
-        if vol1 > 0 and vol5m > 0 and (vol5m / (vol1 / 12 + 1)) > 2:
-            score += 2; reasons.append("VolSpike5m")
-        elif buys5 > sells5 * 2 and buys5 >= 10:
-            score += 1; reasons.append("5mBuySpike")
+            # Volume spike intensity
+            if spike >= 10:   score += 3; reasons.append(f"Spike{spike:.0f}x")
+            elif spike >= 6:  score += 2; reasons.append(f"Spike{spike:.0f}x")
+            elif spike >= 3:  score += 1; reasons.append(f"Spike{spike:.0f}x")
 
-        # Buy pressure
-        if sells > 0:
-            ratio = buys / sells
-            if ratio >= 3.0:   score += 3; reasons.append(f"Buys{ratio:.1f}x")
-            elif ratio >= 2.0: score += 2; reasons.append(f"Buys{ratio:.1f}x")
-            elif ratio >= 1.5: score += 1; reasons.append(f"Buys{ratio:.1f}x")
+            # 5m buy pressure
+            if buys5 > sells5 * 3 and buys5 >= 20:
+                score += 3; reasons.append("5mBuyRush")
+            elif buys5 > sells5 * 2 and buys5 >= 10:
+                score += 2; reasons.append("5mBuys2x")
+            elif buys5 > sells5 * 1.5:
+                score += 1; reasons.append("5mBuys1.5x")
 
-        # Market cap
-        if 0 < mc <= 50_000:    score += 3; reasons.append("MC<50k")
-        elif 0 < mc <= 100_000: score += 2; reasons.append("MC<100k")
-        elif 0 < mc <= 300_000: score += 1; reasons.append("MC<300k")
+            # 24h buy ratio
+            if sells > 0:
+                ratio = buys / sells
+                if ratio >= 3.0:   score += 2; reasons.append(f"Buys{ratio:.1f}x")
+                elif ratio >= 2.0: score += 1; reasons.append(f"Buys{ratio:.1f}x")
 
-        # Age bonus
-        if 0 < age <= 5:    score += 3; reasons.append("Age<5m")
-        elif 0 < age <= 15: score += 2; reasons.append("Age<15m")
-        elif 0 < age <= 30: score += 1; reasons.append("Age<30m")
+            # Price momentum
+            if ch1 >= 50:   score += 3; reasons.append(f"+{ch1:.0f}%1h")
+            elif ch1 >= 20: score += 2; reasons.append(f"+{ch1:.0f}%1h")
+            elif ch1 >= 10: score += 1; reasons.append(f"+{ch1:.0f}%1h")
 
-        # Price momentum
-        if ch1 >= 200:   score += 3; reasons.append(f"+{ch1:.0f}%")
-        elif ch1 >= 100: score += 2; reasons.append(f"+{ch1:.0f}%")
-        elif ch1 >= 50:  score += 1; reasons.append(f"+{ch1:.0f}%")
+            # Market cap (mid range = more room to grow)
+            if 500_000 <= mc <= 2_000_000:
+                score += 1; reasons.append("MC500k-2M")
 
-        # Real DEX bonus
-        if dex_type == "real":
-            score += 1; reasons.append("RealDEX")
+        else:
+            # ── PUMP / DEX scoring ──
+
+            # Liquidity (real DEX only)
+            if dex_type == "real":
+                if liq >= 30_000:  score += 1; reasons.append("Liq>30k")
+                if liq >= 75_000:  score += 1; reasons.append("Liq>75k")
+                if liq >= 150_000: score += 1; reasons.append("Liq>150k")
+
+            # Volume
+            if vol24 >= 10_000:  score += 1; reasons.append("Vol>10k")
+            if vol24 >= 50_000:  score += 1; reasons.append("Vol>50k")
+            if vol1  >= 5_000:   score += 1; reasons.append("Vol1h>5k")
+            if vol1  >= 30_000:  score += 1; reasons.append("Vol1h>30k")
+
+            # Vol spike
+            if spike > 2:
+                score += 2; reasons.append("VolSpike5m")
+            elif buys5 > sells5 * 2 and buys5 >= 10:
+                score += 1; reasons.append("5mBuySpike")
+
+            # Buy pressure
+            if sells > 0:
+                ratio = buys / sells
+                if ratio >= 3.0:   score += 3; reasons.append(f"Buys{ratio:.1f}x")
+                elif ratio >= 2.0: score += 2; reasons.append(f"Buys{ratio:.1f}x")
+                elif ratio >= 1.5: score += 1; reasons.append(f"Buys{ratio:.1f}x")
+
+            # MC
+            if 0 < mc <= 50_000:    score += 3; reasons.append("MC<50k")
+            elif 0 < mc <= 100_000: score += 2; reasons.append("MC<100k")
+            elif 0 < mc <= 300_000: score += 1; reasons.append("MC<300k")
+
+            # Age
+            if 0 < age <= 5:    score += 3; reasons.append("Age<5m")
+            elif 0 < age <= 15: score += 2; reasons.append("Age<15m")
+            elif 0 < age <= 30: score += 1; reasons.append("Age<30m")
+
+            # Price momentum
+            if ch1 >= 200:   score += 3; reasons.append(f"+{ch1:.0f}%")
+            elif ch1 >= 100: score += 2; reasons.append(f"+{ch1:.0f}%")
+            elif ch1 >= 50:  score += 1; reasons.append(f"+{ch1:.0f}%")
+
+            # Real DEX bonus
+            if dex_type == "real":
+                score += 1; reasons.append("RealDEX")
 
     except Exception as e:
         log.warning(f"Score error: {e}")
@@ -658,8 +809,8 @@ def score_token(pair, dex_type: str) -> tuple:
 #  ALERT FORMATTER
 # ─────────────────────────────────────────────
 
-def format_alert(pair, score, reasons, dex_type, risk_tag, risk_emoji,
-                 risk_reasons, risk_pts, holders) -> str:
+def format_alert(pair, score, reasons, dex_type, mode,
+                 risk_tag, risk_emoji, risk_reasons, risk_pts, holders) -> str:
 
     name   = str(pair.get("baseToken", {}).get("name", "Unknown"))[:30]
     symbol = str(pair.get("baseToken", {}).get("symbol", "???"))[:10]
@@ -674,6 +825,7 @@ def format_alert(pair, score, reasons, dex_type, risk_tag, risk_emoji,
     vol5m = int(get_volume(pair, "m5"))
     ch1   = get_price_change(pair, "h1")
     ch24  = get_price_change(pair, "h24")
+    spike = get_vol_spike_ratio(pair)
 
     txns  = get_txns(pair, "h24")
     buys  = int(safe_float(txns.get("buys", 0)))
@@ -693,36 +845,47 @@ def format_alert(pair, score, reasons, dex_type, risk_tag, risk_emoji,
 
     age_str = format_age(get_pair_age_minutes(pair))
 
+    # Signal level
     if score >= 13:   sig_emoji, signal = "💎", "MEGA GEM"
     elif score >= 11: sig_emoji, signal = "🚀", "STRONG BUY"
     elif score >= 9:  sig_emoji, signal = "🔥", "HIGH POTENTIAL"
     else:             sig_emoji, signal = "⚡", "WATCH NOW"
 
-    type_tag = "⚡ PUMP.FUN" if dex_type == "pump" else "🏦 REAL DEX"
-    liq_line = "💧 Liq:      Bonding Curve" if dex_type == "pump" else f"💧 Liq:      ${liq:,}"
+    # Mode tag
+    if mode == "pump":
+        mode_tag = "⚡ PUMP.FUN"
+        liq_line = "💧 Liq:      Bonding Curve"
+    elif mode == "momentum":
+        mode_tag = "📈 MOMENTUM"
+        liq_line = f"💧 Liq:      ${liq:,}  (LOCKED)"
+    else:
+        mode_tag = "🏦 REAL DEX"
+        liq_line = f"💧 Liq:      ${liq:,}"
 
-    # Holder concentration line
+    # Holder line
     if holders:
         holder_line = (
             f"🐋 Holders:  Top1={holders.get('top1',0)}%  "
-            f"Top5={holders.get('top5',0)}%  "
-            f"Top10={holders.get('top10',0)}%"
+            f"Top5={holders.get('top5',0)}%"
         )
     else:
-        holder_line = "🐋 Holders:  Data unavailable"
+        holder_line = "🐋 Holders:  N/A"
 
     reasons_str = " | ".join(reasons)
 
+    # Spike line for momentum
+    spike_line = f"⚡ Vol Spike: {spike:.1f}x normal rate\n" if mode == "momentum" else ""
+
     msg = (
-        f"{sig_emoji} {signal}  [{type_tag}]\n"
+        f"{sig_emoji} {signal}  [{mode_tag}]\n"
         f"================================\n"
         f"🪙 {name} ({symbol})\n"
         f"🏦 DEX: {dex}\n\n"
         f"⭐ Score:  {score}/15\n"
         f"✅ {reasons_str}\n\n"
-        f"━━━━ RISK ASSESSMENT ━━━━\n"
-        f"{risk_emoji} Risk:   {risk_tag}  ({risk_pts} pts)\n"
-        f"⚠️  Why:   {risk_reasons}\n"
+        f"━━━━ RISK ━━━━\n"
+        f"{risk_emoji} {risk_tag}  ({risk_pts} pts)\n"
+        f"⚠️  {risk_reasons}\n"
         f"{holder_line}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"{liq_line}\n"
@@ -730,6 +893,7 @@ def format_alert(pair, score, reasons, dex_type, risk_tag, risk_emoji,
         f"📊 Vol 24h:  ${vol24:,}\n"
         f"📊 Vol 1h:   ${vol1:,}\n"
         f"📊 Vol 5m:   ${vol5m:,}\n"
+        f"{spike_line}"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"🟢 Buys 24h: {buys}  🔴 Sells: {sells}\n"
         f"⚖️  Ratio:   {ratio}\n"
@@ -810,7 +974,7 @@ def track_wallets():
                 short     = f"{wallet[:6]}...{wallet[-4:]}"
                 emoji     = "🟢" if "buy" in side.lower() else "🔴"
                 msg = (
-                    f"🐋 WHALE WALLET MOVE\n"
+                    f"🐋 WHALE MOVE\n"
                     f"================================\n"
                     f"Wallet: {short}\n"
                     f"{emoji} {side.upper()} -> {token}\n"
@@ -829,21 +993,22 @@ def track_wallets():
 def report_stats():
     uptime = int(time.time() - stats["start_time"])
     h, m   = uptime // 3600, (uptime % 3600) // 60
-    total  = stats["alerts_pump"] + stats["alerts_dex"]
+    total  = stats["alerts_pump"] + stats["alerts_dex"] + stats["alerts_momentum"]
     rate   = total / max(uptime / 3600, 0.1)
     msg = (
-        f"📊 PRO SNIPER v4.3 STATS\n"
+        f"📊 PRO SNIPER v4.4 STATS\n"
         f"================================\n"
         f"Uptime:        {h}h {m}m\n"
         f"Cycles:        {stats['cycles']}\n"
         f"Pairs Scanned: {stats['pairs_scanned']}\n"
         f"Total Alerts:  {total} ({rate:.1f}/hr)\n"
         f"  Pump.fun:    {stats['alerts_pump']}\n"
-        f"  Real DEX:    {stats['alerts_dex']}\n\n"
-        f"RISK BREAKDOWN:\n"
+        f"  Real DEX:    {stats['alerts_dex']}\n"
+        f"  Momentum:    {stats['alerts_momentum']}\n\n"
+        f"RISK:\n"
         f"  SAFE:    {stats['safe_count']}\n"
         f"  RISKY:   {stats['risky_count']}\n"
-        f"  GAMBLE:  {stats['gamble_count']}\n\n"
+        f"  GAMBLE:  {stats['gamble_skipped']} (filtered)\n\n"
         f"Rugs Skipped:  {stats['rugs_skipped']}\n"
         f"Cache:         {len(seen_tokens)}"
     )
@@ -855,12 +1020,12 @@ def report_stats():
 
 def main():
     log.info("=" * 56)
-    log.info("   MEMECOIN PRO SNIPER BOT v4.3 - RISK ENGINE")
+    log.info("   MEMECOIN PRO SNIPER BOT v4.4 - THREE MODE")
     log.info("=" * 56)
-    log.info(f"PUMP: score>={PUMP_MIN_SCORE} | age<{PUMP_MAX_AGE_MIN}m | buys>={PUMP_MIN_BUYS}")
-    log.info(f"DEX:  score>={DEX_MIN_SCORE} | liq>=${DEX_MIN_LIQUIDITY:,} | buys>={DEX_MIN_BUYS}")
-    log.info(f"Wallets: {len(WALLETS)}")
-    log.info(f"Birdeye: {'ON - Whale detection active' if BIRDEYE_KEY else 'OFF - Add key for whale detection'}")
+    log.info(f"PUMP:     score>={PUMP_MIN_SCORE} | age<{PUMP_MAX_AGE_MIN}m | buys>={PUMP_MIN_BUYS}")
+    log.info(f"DEX:      score>={DEX_MIN_SCORE} | liq>=${DEX_MIN_LIQUIDITY:,} | buys>={DEX_MIN_BUYS}")
+    log.info(f"MOMENTUM: score>={MOM_MIN_SCORE} | MC>=${MOM_MIN_MC:,} | liq>=${MOM_MIN_LIQUIDITY:,} | spike>={MOM_VOL_SPIKE_RATIO}x")
+    log.info(f"Wallets: {len(WALLETS)} | Birdeye: {'ON' if BIRDEYE_KEY else 'OFF'}")
     log.info("=" * 56)
 
     send_startup()
@@ -890,16 +1055,19 @@ def main():
                     if not addr or addr in seen_tokens:
                         continue
 
-                    # Route to correct filter
-                    if dex_type == "pump":
+                    # Detect mode
+                    mode = detect_mode(pair)
+
+                    # Apply correct filter
+                    if mode == "momentum":
+                        passes, reason = passes_momentum_filters(pair)
+                        min_score = MOM_MIN_SCORE
+                    elif mode == "pump":
                         passes, reason = passes_pump_filters(pair)
                         min_score = PUMP_MIN_SCORE
-                    elif dex_type == "real":
+                    else:
                         passes, reason = passes_dex_filters(pair)
                         min_score = DEX_MIN_SCORE
-                    else:
-                        passes, reason = passes_pump_filters(pair)
-                        min_score = PUMP_MIN_SCORE
 
                     if not passes:
                         continue
@@ -912,41 +1080,48 @@ def main():
                         continue
 
                     # Score
-                    score, reasons = score_token(pair, dex_type)
+                    score, reasons = score_token(pair, dex_type, mode)
                     if score < min_score:
                         continue
 
-                    # Whale concentration (only with Birdeye key)
+                    # Whale concentration
                     holders = check_whale_concentration(baddr) if baddr else {}
 
                     # Risk assessment
                     risk_tag, risk_emoji, risk_reasons, risk_pts = assess_risk(
-                        pair, dex_type, score, holders
+                        pair, dex_type, mode, score, holders
                     )
 
-                    # Track risk stats
+                    # Skip GAMBLE — too risky
+                    if risk_tag == "GAMBLE":
+                        log.info(f"GAMBLE SKIPPED: {sym} ({risk_pts}pts)")
+                        stats["gamble_skipped"] += 1
+                        seen_tokens.add(addr)
+                        continue
+
+                    # Track stats
                     if risk_tag == "SAFE":
                         stats["safe_count"] += 1
-                    elif risk_tag == "RISKY":
-                        stats["risky_count"] += 1
                     else:
-                        stats["gamble_count"] += 1
+                        stats["risky_count"] += 1
 
                     seen_tokens.add(addr)
                     msg = format_alert(
-                        pair, score, reasons, dex_type,
+                        pair, score, reasons, dex_type, mode,
                         risk_tag, risk_emoji, risk_reasons,
                         risk_pts, holders
                     )
 
                     log.info(
-                        f"ALERT [{score}/15] [{dex_type.upper()}] "
+                        f"ALERT [{score}/15] [{mode.upper()}] "
                         f"[{risk_tag}] {sym} | {' | '.join(reasons)}"
                     )
                     send_telegram(msg)
 
-                    if dex_type == "pump":
+                    if mode == "pump":
                         stats["alerts_pump"] += 1
+                    elif mode == "momentum":
+                        stats["alerts_momentum"] += 1
                     else:
                         stats["alerts_dex"] += 1
 
@@ -958,12 +1133,12 @@ def main():
                     log.error(f"Pair error: {e}")
                     continue
 
-            total = stats["alerts_pump"] + stats["alerts_dex"]
+            total = stats["alerts_pump"] + stats["alerts_dex"] + stats["alerts_momentum"]
             log.info(
                 f"Alerts: {alerts_this_cycle} | Total: {total} | "
-                f"Safe: {stats['safe_count']} | "
-                f"Risky: {stats['risky_count']} | "
-                f"Gamble: {stats['gamble_count']} | "
+                f"Pump: {stats['alerts_pump']} | "
+                f"DEX: {stats['alerts_dex']} | "
+                f"Momentum: {stats['alerts_momentum']} | "
                 f"Cache: {len(seen_tokens)}"
             )
 
@@ -975,7 +1150,7 @@ def main():
 
         except KeyboardInterrupt:
             log.info("Stopped.")
-            send_telegram("PRO SNIPER BOT v4.3 STOPPED")
+            send_telegram("PRO SNIPER BOT v4.4 STOPPED")
             break
         except Exception as e:
             log.error(f"Main loop error: {e}")
