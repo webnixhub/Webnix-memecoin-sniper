@@ -1,8 +1,9 @@
 """
 ╔══════════════════════════════════════════════════════════╗
-║       MEMECOIN PRO SNIPER BOT v4.2                       ║
+║       MEMECOIN PRO SNIPER BOT v4.3                       ║
 ║       DUAL MODE: Pump.fun Early + Raydium/Orca Strong    ║
-║       QUALITY MODE — Strong Signals Only (3-5/hour)      ║
+║       RISK ENGINE: SAFE / RISKY / GAMBLE Auto Tags       ║
+║       WHALE CONCENTRATION DETECTION                      ║
 ╚══════════════════════════════════════════════════════════╝
 """
 
@@ -20,39 +21,43 @@ BOT_TOKEN   = os.environ.get("BOT_TOKEN",   "PASTE_TELEGRAM_BOT_TOKEN")
 CHAT_ID     = os.environ.get("CHAT_ID",     "PASTE_CHAT_ID")
 BIRDEYE_KEY = os.environ.get("BIRDEYE_KEY", "")
 
+# ─────────────────────────────────────────────
+#  WHALE WALLETS TO TRACK
+# ─────────────────────────────────────────────
+
 WALLETS = [
-    # "E1zGzPY1WdJoHSzf928NWTkZjcAhnUaN1xzF6BhCTsvS"
-      "J9TYAsWWidbrcZybmLSfrLzryANf4CgJBLdvwdGuC8MB"
-      "ALJ4P5QNyHeLEjpKGmA1eUfJHSEGQMjY8HLnDkSgjczb"
-      "91cJmU5pLnmSPuynUJkSz3WSGc8yzxMGoJ6RLz8ZeU4E"
-      "4sgd7efDkAWuZWE9BYHLyXHuPu8V8DmvvZro45BN8mdm",
+    "E1zGzPY1WdJoHSzf928NWTkZjcAhnUaN1xzF6BhCTsvS",
+    "J9TYAsWWidbrcZybmLSfrLzryANf4CgJBLdvwdGuC8MB",
+    "ALJ4P5QNyHeLEjpKGmA1eUfJHSEGQMjY8HLnDkSgjczb",
+    "91cJmU5pLnmSPuynUJkSz3WSGc8yzxMGoJ6RLz8ZeU4E",
+    "4sgd7efDkAWuZWE9BYHLyXHuPu8V8DmvvZro45BN8mdm",
 ]
 
 # ─────────────────────────────────────────────
-#  PUMP.FUN FILTERS — Ultra early, high activity
+#  PUMP.FUN FILTERS
 # ─────────────────────────────────────────────
 
-PUMP_MIN_SCORE      = 6        # High quality only
-PUMP_MAX_AGE_MIN    = 60       # Only last 30 min (ultra fresh)
-PUMP_MIN_VOLUME_24H = 10_000   # $10k volume
-PUMP_MIN_VOLUME_1H  = 1_000    # $1k last hour — active token
-PUMP_MIN_BUYS       = 20       # 20+ real buyers
-PUMP_MIN_BUY_RATIO  = 1.3      # 1.3x more buys than sells
-PUMP_MAX_MC         = 200_000  # Max $200k MC — true early
+PUMP_MIN_SCORE      = 6
+PUMP_MAX_AGE_MIN    = 60
+PUMP_MIN_VOLUME_24H = 5_000
+PUMP_MIN_VOLUME_1H  = 1_000
+PUMP_MIN_BUYS       = 20
+PUMP_MIN_BUY_RATIO  = 1.3
+PUMP_MAX_MC         = 500_000
 
 # ─────────────────────────────────────────────
-#  REAL DEX FILTERS — Raydium / Orca / Meteora
+#  REAL DEX FILTERS
 # ─────────────────────────────────────────────
 
-DEX_MIN_SCORE       = 6        # High quality only
-DEX_MAX_AGE_MIN     = 120      # Last 2 hours
-DEX_MIN_LIQUIDITY   = 30_000   # $30k real liquidity
-DEX_MIN_VOLUME_24H  = 20_000   # $20k volume
-DEX_MIN_VOLUME_1H   = 2_000    # $2k last hour
-DEX_MIN_BUYS        = 20       # 20+ buyers
-DEX_MIN_BUY_RATIO   = 1.5      # 1.5x buy ratio
-DEX_MIN_MC          = 10_000   # Min $10k
-DEX_MAX_MC          = 10_000_000  # Max $10M
+DEX_MIN_SCORE       = 6
+DEX_MAX_AGE_MIN     = 120
+DEX_MIN_LIQUIDITY   = 30_000
+DEX_MIN_VOLUME_24H  = 10_000
+DEX_MIN_VOLUME_1H   = 2_000
+DEX_MIN_BUYS        = 20
+DEX_MIN_BUY_RATIO   = 1.3
+DEX_MIN_MC          = 10_000
+DEX_MAX_MC          = 10_000_000
 
 # ─────────────────────────────────────────────
 #  DEX CLASSIFICATION
@@ -95,6 +100,9 @@ stats = {
     "alerts_dex"   : 0,
     "pairs_scanned": 0,
     "rugs_skipped" : 0,
+    "safe_count"   : 0,
+    "risky_count"  : 0,
+    "gamble_count" : 0,
     "start_time"   : time.time(),
 }
 
@@ -173,24 +181,21 @@ def send_telegram(msg: str, silent: bool = False):
 
 
 def send_startup():
+    wallets_short = [f"{w[:6]}...{w[-4:]}" for w in WALLETS]
     msg = (
-        "PRO SNIPER v4.2 - QUALITY MODE\n"
+        "PRO SNIPER v4.3 - RISK ENGINE\n"
         "================================\n\n"
-        "PUMP.FUN (Ultra Early):\n"
-        f"  Score:    {PUMP_MIN_SCORE}+/15\n"
-        f"  Age:      <{PUMP_MAX_AGE_MIN}m\n"
-        f"  Vol 1h:   ${PUMP_MIN_VOLUME_1H:,}+\n"
-        f"  Buys:     {PUMP_MIN_BUYS}+\n"
-        f"  Ratio:    {PUMP_MIN_BUY_RATIO}x+\n"
-        f"  Max MC:   ${PUMP_MAX_MC:,}\n\n"
-        "REAL DEX (Raydium/Orca):\n"
-        f"  Score:    {DEX_MIN_SCORE}+/15\n"
-        f"  Liq:      ${DEX_MIN_LIQUIDITY:,}+\n"
-        f"  Vol 1h:   ${DEX_MIN_VOLUME_1H:,}+\n"
-        f"  Buys:     {DEX_MIN_BUYS}+\n"
-        f"  Ratio:    {DEX_MIN_BUY_RATIO}x+\n"
-        f"  Max MC:   ${DEX_MAX_MC:,}\n\n"
-        "Target: 3-5 strong alerts/hour\n"
+        "PUMP.FUN:\n"
+        f"  Score: {PUMP_MIN_SCORE}+/15 | Age: <{PUMP_MAX_AGE_MIN}m\n"
+        f"  Vol1h: ${PUMP_MIN_VOLUME_1H:,}+ | Buys: {PUMP_MIN_BUYS}+\n"
+        f"  Ratio: {PUMP_MIN_BUY_RATIO}x+ | MC: <${PUMP_MAX_MC:,}\n\n"
+        "REAL DEX:\n"
+        f"  Score: {DEX_MIN_SCORE}+/15 | Liq: ${DEX_MIN_LIQUIDITY:,}+\n"
+        f"  Vol1h: ${DEX_MIN_VOLUME_1H:,}+ | Buys: {DEX_MIN_BUYS}+\n\n"
+        "RISK TAGS: SAFE / RISKY / GAMBLE\n"
+        "WHALE DETECTION: ON\n\n"
+        f"Tracking {len(WALLETS)} wallets:\n"
+        + "\n".join(wallets_short) + "\n\n"
         "Scanning ALL Solana DEXes..."
     )
     send_telegram(msg)
@@ -361,7 +366,7 @@ def is_rug(token_address: str) -> bool:
             return False
         data  = r.json()
         score = safe_float(data.get("score", 0))
-        risks = [str(r.get("name", "")).lower() for r in data.get("risks", [])]
+        risks = [str(x.get("name", "")).lower() for x in data.get("risks", [])]
         bad   = ["freeze authority", "mint authority", "honeypot", "high tax"]
         if any(b in risk for b in bad for risk in risks):
             return True
@@ -370,7 +375,153 @@ def is_rug(token_address: str) -> bool:
         return False
 
 # ─────────────────────────────────────────────
-#  DUAL FILTERS
+#  WHALE CONCENTRATION CHECK
+# ─────────────────────────────────────────────
+
+def check_whale_concentration(token_address: str) -> dict:
+    """Check top holder concentration via Birdeye."""
+    if not BIRDEYE_KEY:
+        return {}
+    try:
+        headers = {
+            "X-API-KEY": BIRDEYE_KEY,
+            "accept"   : "application/json",
+            "x-chain"  : "solana",
+        }
+        r = requests.get(
+            "https://public-api.birdeye.so/defi/token_holder",
+            headers=headers,
+            params={"address": token_address, "limit": 10},
+            timeout=8,
+        )
+        if r.status_code != 200:
+            return {}
+
+        holders = r.json().get("data", {}).get("items", []) or []
+        if not holders:
+            return {}
+
+        top1  = safe_float(holders[0].get("percentage", 0)) if len(holders) > 0 else 0
+        top3  = sum(safe_float(h.get("percentage", 0)) for h in holders[:3])
+        top5  = sum(safe_float(h.get("percentage", 0)) for h in holders[:5])
+        top10 = sum(safe_float(h.get("percentage", 0)) for h in holders[:10])
+
+        return {
+            "top1" : round(top1, 1),
+            "top3" : round(top3, 1),
+            "top5" : round(top5, 1),
+            "top10": round(top10, 1),
+        }
+    except:
+        return {}
+
+# ─────────────────────────────────────────────
+#  RISK ENGINE
+# ─────────────────────────────────────────────
+
+def assess_risk(pair, dex_type: str, score: int, holders: dict) -> tuple:
+    """
+    Returns (tag, emoji, reasons, risk_points)
+    tag = SAFE / RISKY / GAMBLE
+    """
+    mc    = safe_float(pair.get("fdv"))
+    liq   = get_liquidity(pair)
+    age   = get_pair_age_minutes(pair)
+    vol24 = get_volume(pair, "h24")
+    vol5m = get_volume(pair, "m5")
+    vol1  = get_volume(pair, "h1")
+
+    txns24 = get_txns(pair, "h24")
+    buys   = safe_float(txns24.get("buys", 0))
+    sells  = safe_float(txns24.get("sells", 0))
+    txns5  = get_txns(pair, "m5")
+    buys5  = safe_float(txns5.get("buys", 0))
+
+    risk_pts = 0
+    reasons  = []
+
+    # ── Whale concentration (from Birdeye holders) ──
+    if holders:
+        top1  = holders.get("top1", 0)
+        top5  = holders.get("top5", 0)
+
+        if top1 > 30:
+            risk_pts += 3; reasons.append(f"Top1 holds {top1}%")
+        elif top1 > 15:
+            risk_pts += 2; reasons.append(f"Top1 holds {top1}%")
+        elif top1 > 8:
+            risk_pts += 1; reasons.append(f"Top1 holds {top1}%")
+
+        if top5 > 60:
+            risk_pts += 2; reasons.append(f"Top5 hold {top5}%")
+        elif top5 > 40:
+            risk_pts += 1; reasons.append(f"Top5 hold {top5}%")
+
+    # ── Sudden volume spike (pump & dump risk) ──
+    if vol24 > 0 and vol5m / (vol24 + 1) > 0.6:
+        risk_pts += 2; reasons.append("Vol spike >60% in 5m")
+    elif vol24 > 0 and vol5m / (vol24 + 1) > 0.4:
+        risk_pts += 1; reasons.append("Vol spike 40%+ in 5m")
+
+    # ── Buy concentration (one whale buying fast) ──
+    if buys > 0 and buys5 / (buys + 1) > 0.5:
+        risk_pts += 2; reasons.append("Whale buy concentration")
+    elif buys > 0 and buys5 / (buys + 1) > 0.3:
+        risk_pts += 1; reasons.append("Buy concentration")
+
+    # ── Age risk ──
+    if age < 5:
+        risk_pts += 2; reasons.append("Age <5m")
+    elif age < 15:
+        risk_pts += 1; reasons.append("Age <15m")
+
+    # ── Market cap risk ──
+    if 0 < mc < 10_000:
+        risk_pts += 3; reasons.append("MC <$10k")
+    elif 0 < mc < 30_000:
+        risk_pts += 2; reasons.append("MC <$30k")
+    elif 0 < mc < 100_000:
+        risk_pts += 1; reasons.append("MC <$100k")
+
+    # ── Liquidity risk ──
+    if dex_type == "pump":
+        risk_pts += 1; reasons.append("Bonding curve")
+    elif liq < 20_000:
+        risk_pts += 2; reasons.append("Liq <$20k")
+    elif liq < 50_000:
+        risk_pts += 1; reasons.append("Liq <$50k")
+
+    # ── Sell pressure ──
+    if sells > 0 and buys / (sells + 1) < 1.2:
+        risk_pts += 1; reasons.append("Weak buy ratio")
+
+    # ── High score reduces risk ──
+    if score >= 12:
+        risk_pts -= 2
+    elif score >= 10:
+        risk_pts -= 1
+
+    # ── Real DEX with high liq = safer ──
+    if dex_type == "real" and liq >= 50_000:
+        risk_pts -= 1
+
+    risk_pts = max(0, risk_pts)  # floor at 0
+
+    if risk_pts <= 2:
+        tag   = "SAFE"
+        emoji = "🟢"
+    elif risk_pts <= 4:
+        tag   = "RISKY"
+        emoji = "🟡"
+    else:
+        tag   = "GAMBLE"
+        emoji = "🔴"
+
+    reason_str = " | ".join(reasons) if reasons else "No major risks"
+    return tag, emoji, reason_str, risk_pts
+
+# ─────────────────────────────────────────────
+#  FILTERS
 # ─────────────────────────────────────────────
 
 def passes_pump_filters(pair) -> tuple:
@@ -383,7 +534,7 @@ def passes_pump_filters(pair) -> tuple:
     sells = safe_float(txns.get("sells", 0))
 
     if age < 9999 and age > PUMP_MAX_AGE_MIN:
-        return False, f"Age {age:.0f}m > {PUMP_MAX_AGE_MIN}m"
+        return False, f"Age {age:.0f}m"
     if vol24 < PUMP_MIN_VOLUME_24H:
         return False, f"Vol24h ${vol24:.0f}"
     if vol1 < PUMP_MIN_VOLUME_1H:
@@ -391,7 +542,7 @@ def passes_pump_filters(pair) -> tuple:
     if mc > PUMP_MAX_MC and mc > 0:
         return False, f"MC ${mc:,.0f}"
     if buys < PUMP_MIN_BUYS:
-        return False, f"Buys {int(buys)} < {PUMP_MIN_BUYS}"
+        return False, f"Buys {int(buys)}"
     if sells > 0 and buys / sells < PUMP_MIN_BUY_RATIO:
         return False, f"Ratio {buys/(sells+1):.1f}x"
 
@@ -421,7 +572,7 @@ def passes_dex_filters(pair) -> tuple:
     if mc > DEX_MAX_MC and mc > 0:
         return False, f"MC ${mc:,.0f}"
     if buys < DEX_MIN_BUYS:
-        return False, f"Buys {int(buys)} < {DEX_MIN_BUYS}"
+        return False, f"Buys {int(buys)}"
     if sells > 0 and buys / sells < DEX_MIN_BUY_RATIO:
         return False, f"Ratio {buys/(sells+1):.1f}x"
 
@@ -453,30 +604,30 @@ def score_token(pair, dex_type: str) -> tuple:
 
         # Liquidity (real DEX only)
         if dex_type == "real":
-            if liq >= 50_000:  score += 1; reasons.append("Liq>50k")
-            if liq >= 100_000: score += 1; reasons.append("Liq>100k")
-            if liq >= 200_000: score += 1; reasons.append("Liq>200k")
+            if liq >= 30_000:  score += 1; reasons.append("Liq>30k")
+            if liq >= 75_000:  score += 1; reasons.append("Liq>75k")
+            if liq >= 150_000: score += 1; reasons.append("Liq>150k")
 
         # Volume 24h
-        if vol24 >= 20_000:  score += 1; reasons.append("Vol>20k")
-        if vol24 >= 100_000: score += 1; reasons.append("Vol>100k")
-        if vol24 >= 500_000: score += 1; reasons.append("Vol>500k")
+        if vol24 >= 10_000:  score += 1; reasons.append("Vol>10k")
+        if vol24 >= 50_000:  score += 1; reasons.append("Vol>50k")
+        if vol24 >= 200_000: score += 1; reasons.append("Vol>200k")
 
-        # Volume 1h momentum
-        if vol1 >= 10_000: score += 1; reasons.append("Vol1h>10k")
-        if vol1 >= 50_000: score += 1; reasons.append("Vol1h>50k")
+        # Volume 1h
+        if vol1 >= 5_000:  score += 1; reasons.append("Vol1h>5k")
+        if vol1 >= 30_000: score += 1; reasons.append("Vol1h>30k")
 
         # Volume spike 5m
         if vol1 > 0 and vol5m > 0 and (vol5m / (vol1 / 12 + 1)) > 2:
             score += 2; reasons.append("VolSpike5m")
-        elif buys5 > sells5 * 2 and buys5 >= 20:
+        elif buys5 > sells5 * 2 and buys5 >= 10:
             score += 1; reasons.append("5mBuySpike")
 
         # Buy pressure
         if sells > 0:
             ratio = buys / sells
-            if ratio >= 4.0:   score += 3; reasons.append(f"Buys{ratio:.1f}x")
-            elif ratio >= 2.5: score += 2; reasons.append(f"Buys{ratio:.1f}x")
+            if ratio >= 3.0:   score += 3; reasons.append(f"Buys{ratio:.1f}x")
+            elif ratio >= 2.0: score += 2; reasons.append(f"Buys{ratio:.1f}x")
             elif ratio >= 1.5: score += 1; reasons.append(f"Buys{ratio:.1f}x")
 
         # Market cap
@@ -484,13 +635,13 @@ def score_token(pair, dex_type: str) -> tuple:
         elif 0 < mc <= 100_000: score += 2; reasons.append("MC<100k")
         elif 0 < mc <= 300_000: score += 1; reasons.append("MC<300k")
 
-        # Age bonus — ultra fresh
+        # Age bonus
         if 0 < age <= 5:    score += 3; reasons.append("Age<5m")
         elif 0 < age <= 15: score += 2; reasons.append("Age<15m")
         elif 0 < age <= 30: score += 1; reasons.append("Age<30m")
 
         # Price momentum
-        if ch1 >= 200:  score += 3; reasons.append(f"+{ch1:.0f}%")
+        if ch1 >= 200:   score += 3; reasons.append(f"+{ch1:.0f}%")
         elif ch1 >= 100: score += 2; reasons.append(f"+{ch1:.0f}%")
         elif ch1 >= 50:  score += 1; reasons.append(f"+{ch1:.0f}%")
 
@@ -507,7 +658,9 @@ def score_token(pair, dex_type: str) -> tuple:
 #  ALERT FORMATTER
 # ─────────────────────────────────────────────
 
-def format_alert(pair, score, reasons, dex_type: str) -> str:
+def format_alert(pair, score, reasons, dex_type, risk_tag, risk_emoji,
+                 risk_reasons, risk_pts, holders) -> str:
+
     name   = str(pair.get("baseToken", {}).get("name", "Unknown"))[:30]
     symbol = str(pair.get("baseToken", {}).get("symbol", "???"))[:10]
     addr   = pair.get("pairAddress", "")
@@ -540,22 +693,37 @@ def format_alert(pair, score, reasons, dex_type: str) -> str:
 
     age_str = format_age(get_pair_age_minutes(pair))
 
-    if score >= 13:   emoji, signal = "💎", "MEGA GEM"
-    elif score >= 11: emoji, signal = "🚀", "STRONG BUY"
-    elif score >= 9:  emoji, signal = "🔥", "HIGH POTENTIAL"
-    else:             emoji, signal = "⚡", "WATCH NOW"
+    if score >= 13:   sig_emoji, signal = "💎", "MEGA GEM"
+    elif score >= 11: sig_emoji, signal = "🚀", "STRONG BUY"
+    elif score >= 9:  sig_emoji, signal = "🔥", "HIGH POTENTIAL"
+    else:             sig_emoji, signal = "⚡", "WATCH NOW"
 
     type_tag = "⚡ PUMP.FUN" if dex_type == "pump" else "🏦 REAL DEX"
     liq_line = "💧 Liq:      Bonding Curve" if dex_type == "pump" else f"💧 Liq:      ${liq:,}"
+
+    # Holder concentration line
+    if holders:
+        holder_line = (
+            f"🐋 Holders:  Top1={holders.get('top1',0)}%  "
+            f"Top5={holders.get('top5',0)}%  "
+            f"Top10={holders.get('top10',0)}%"
+        )
+    else:
+        holder_line = "🐋 Holders:  Data unavailable"
+
     reasons_str = " | ".join(reasons)
 
     msg = (
-        f"{emoji} {signal}  [{type_tag}]\n"
+        f"{sig_emoji} {signal}  [{type_tag}]\n"
         f"================================\n"
         f"🪙 {name} ({symbol})\n"
         f"🏦 DEX: {dex}\n\n"
-        f"⭐ Score: {score}/15\n"
+        f"⭐ Score:  {score}/15\n"
         f"✅ {reasons_str}\n\n"
+        f"━━━━ RISK ASSESSMENT ━━━━\n"
+        f"{risk_emoji} Risk:   {risk_tag}  ({risk_pts} pts)\n"
+        f"⚠️  Why:   {risk_reasons}\n"
+        f"{holder_line}\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"{liq_line}\n"
         f"💰 MC:       ${mc:,}\n"
@@ -642,7 +810,7 @@ def track_wallets():
                 short     = f"{wallet[:6]}...{wallet[-4:]}"
                 emoji     = "🟢" if "buy" in side.lower() else "🔴"
                 msg = (
-                    f"🐋 WHALE MOVE\n"
+                    f"🐋 WHALE WALLET MOVE\n"
                     f"================================\n"
                     f"Wallet: {short}\n"
                     f"{emoji} {side.upper()} -> {token}\n"
@@ -650,6 +818,7 @@ def track_wallets():
                     f"TX: https://solscan.io/tx/{tx_id}"
                 )
                 send_telegram(msg)
+                log.info(f"Whale: {short} {side} {token} ${value_usd:.0f}")
         except Exception as e:
             log.error(f"Wallet error: {e}")
 
@@ -663,14 +832,18 @@ def report_stats():
     total  = stats["alerts_pump"] + stats["alerts_dex"]
     rate   = total / max(uptime / 3600, 0.1)
     msg = (
-        f"📊 PRO SNIPER STATS\n"
+        f"📊 PRO SNIPER v4.3 STATS\n"
         f"================================\n"
         f"Uptime:        {h}h {m}m\n"
         f"Cycles:        {stats['cycles']}\n"
         f"Pairs Scanned: {stats['pairs_scanned']}\n"
         f"Total Alerts:  {total} ({rate:.1f}/hr)\n"
         f"  Pump.fun:    {stats['alerts_pump']}\n"
-        f"  Real DEX:    {stats['alerts_dex']}\n"
+        f"  Real DEX:    {stats['alerts_dex']}\n\n"
+        f"RISK BREAKDOWN:\n"
+        f"  SAFE:    {stats['safe_count']}\n"
+        f"  RISKY:   {stats['risky_count']}\n"
+        f"  GAMBLE:  {stats['gamble_count']}\n\n"
         f"Rugs Skipped:  {stats['rugs_skipped']}\n"
         f"Cache:         {len(seen_tokens)}"
     )
@@ -682,11 +855,12 @@ def report_stats():
 
 def main():
     log.info("=" * 56)
-    log.info("   MEMECOIN PRO SNIPER BOT v4.2 - QUALITY MODE")
+    log.info("   MEMECOIN PRO SNIPER BOT v4.3 - RISK ENGINE")
     log.info("=" * 56)
-    log.info(f"PUMP: score>={PUMP_MIN_SCORE} | age<{PUMP_MAX_AGE_MIN}m | vol1h>${PUMP_MIN_VOLUME_1H:,} | buys>={PUMP_MIN_BUYS} | ratio>={PUMP_MIN_BUY_RATIO}x")
-    log.info(f"DEX:  score>={DEX_MIN_SCORE} | liq>=${DEX_MIN_LIQUIDITY:,} | vol1h>${DEX_MIN_VOLUME_1H:,} | buys>={DEX_MIN_BUYS} | ratio>={DEX_MIN_BUY_RATIO}x")
-    log.info(f"Birdeye: {'ON' if BIRDEYE_KEY else 'OFF'}")
+    log.info(f"PUMP: score>={PUMP_MIN_SCORE} | age<{PUMP_MAX_AGE_MIN}m | buys>={PUMP_MIN_BUYS}")
+    log.info(f"DEX:  score>={DEX_MIN_SCORE} | liq>=${DEX_MIN_LIQUIDITY:,} | buys>={DEX_MIN_BUYS}")
+    log.info(f"Wallets: {len(WALLETS)}")
+    log.info(f"Birdeye: {'ON - Whale detection active' if BIRDEYE_KEY else 'OFF - Add key for whale detection'}")
     log.info("=" * 56)
 
     send_startup()
@@ -737,14 +911,38 @@ def main():
                         seen_tokens.add(addr)
                         continue
 
+                    # Score
                     score, reasons = score_token(pair, dex_type)
                     if score < min_score:
                         continue
 
-                    seen_tokens.add(addr)
-                    msg = format_alert(pair, score, reasons, dex_type)
-                    log.info(f"ALERT [{score}/15] [{dex_type.upper()}] {sym} | {' | '.join(reasons)}")
+                    # Whale concentration (only with Birdeye key)
+                    holders = check_whale_concentration(baddr) if baddr else {}
 
+                    # Risk assessment
+                    risk_tag, risk_emoji, risk_reasons, risk_pts = assess_risk(
+                        pair, dex_type, score, holders
+                    )
+
+                    # Track risk stats
+                    if risk_tag == "SAFE":
+                        stats["safe_count"] += 1
+                    elif risk_tag == "RISKY":
+                        stats["risky_count"] += 1
+                    else:
+                        stats["gamble_count"] += 1
+
+                    seen_tokens.add(addr)
+                    msg = format_alert(
+                        pair, score, reasons, dex_type,
+                        risk_tag, risk_emoji, risk_reasons,
+                        risk_pts, holders
+                    )
+
+                    log.info(
+                        f"ALERT [{score}/15] [{dex_type.upper()}] "
+                        f"[{risk_tag}] {sym} | {' | '.join(reasons)}"
+                    )
                     send_telegram(msg)
 
                     if dex_type == "pump":
@@ -762,10 +960,10 @@ def main():
 
             total = stats["alerts_pump"] + stats["alerts_dex"]
             log.info(
-                f"Alerts: {alerts_this_cycle} | "
-                f"Total: {total} | "
-                f"Pump: {stats['alerts_pump']} | "
-                f"DEX: {stats['alerts_dex']} | "
+                f"Alerts: {alerts_this_cycle} | Total: {total} | "
+                f"Safe: {stats['safe_count']} | "
+                f"Risky: {stats['risky_count']} | "
+                f"Gamble: {stats['gamble_count']} | "
                 f"Cache: {len(seen_tokens)}"
             )
 
@@ -777,7 +975,7 @@ def main():
 
         except KeyboardInterrupt:
             log.info("Stopped.")
-            send_telegram("PRO SNIPER BOT v4.2 STOPPED")
+            send_telegram("PRO SNIPER BOT v4.3 STOPPED")
             break
         except Exception as e:
             log.error(f"Main loop error: {e}")
