@@ -48,18 +48,18 @@ MIN_WALLET_TRADES  = 3    # minimum trades before evaluating
 # ─────────────────────────────────────────────
 
 # MODE 1 — PUMP.FUN
-PUMP_MIN_SCORE      = 6
+PUMP_MIN_SCORE      = 5
 PUMP_MAX_AGE_MIN    = 90
 PUMP_MIN_VOLUME_24H = 3_000
 PUMP_MIN_VOLUME_1H  = 1_000
 PUMP_MIN_VOLUME_5M  = 300      # Must have recent 5m activity
-PUMP_MIN_BUYS       = 15
+PUMP_MIN_BUYS       = 10
 PUMP_MIN_BUY_RATIO  = 1.4      # Stronger buy requirement
 PUMP_MAX_MC         = 800_000
-PUMP_MIN_PRICE_CHANGE = 5.0    # Must be moving up
+PUMP_MIN_PRICE_CHANGE = 3.0    # Must be moving up
 
 # MODE 2 — REAL DEX
-DEX_MIN_SCORE       = 6
+DEX_MIN_SCORE       = 5
 DEX_MAX_AGE_MIN     = 180
 DEX_MIN_LIQUIDITY   = 15_000
 DEX_MIN_VOLUME_24H  = 5_000
@@ -70,16 +70,16 @@ DEX_MIN_MC          = 5_000
 DEX_MAX_MC          = 30_000_000
 
 # MODE 3 — MOMENTUM (big coins)
-MOM_MIN_SCORE       = 7
-MOM_MIN_MC          = 500_000
+MOM_MIN_SCORE       = 8
+MOM_MIN_MC          = 200_000
 MOM_MAX_MC          = 50_000_000
 MOM_MIN_LIQUIDITY   = 50_000
 MOM_MIN_VOLUME_1H   = 20_000
 MOM_MIN_VOLUME_5M   = 5_000
-MOM_MIN_BUYS        = 50
+MOM_MIN_BUYS        = 30
 MOM_MIN_BUY_RATIO   = 1.3
 MOM_VOL_SPIKE_RATIO = 3.0
-MOM_MIN_PRICE_CHANGE = 5.0
+MOM_MIN_PRICE_CHANGE = 4.0
 
 # ─────────────────────────────────────────────
 #  PRO SIGNAL QUALITY GATES
