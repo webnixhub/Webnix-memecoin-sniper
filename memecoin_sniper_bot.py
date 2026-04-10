@@ -50,46 +50,46 @@ MIN_WALLET_TRADES  = 3    # minimum trades before evaluating
 # MODE 1 — PUMP.FUN
 PUMP_MIN_SCORE      = 4
 PUMP_MAX_AGE_MIN    = 90
-PUMP_MIN_VOLUME_24H = 3_000
-PUMP_MIN_VOLUME_1H  = 1_000
-PUMP_MIN_VOLUME_5M  = 300      # Must have recent 5m activity
+PUMP_MIN_VOLUME_24H = 2_000
+PUMP_MIN_VOLUME_1H  = 500  
+PUMP_MIN_VOLUME_5M  = 100      # Must have recent 5m activity
 PUMP_MIN_BUYS       = 10
-PUMP_MIN_BUY_RATIO  = 1.3      # Stronger buy requirement
-PUMP_MAX_MC         = 800_000
-PUMP_MIN_PRICE_CHANGE = 3.0    # Must be moving up
+PUMP_MIN_BUY_RATIO  = 1.2      # Stronger buy requirement
+PUMP_MAX_MC         = 1_000_000
+PUMP_MIN_PRICE_CHANGE = 1.0    # Must be moving up
 
 # MODE 2 — REAL DEX
-DEX_MIN_SCORE       = 8
+DEX_MIN_SCORE       = 6
 DEX_MAX_AGE_MIN     = 180
-DEX_MIN_LIQUIDITY   = 20_000
-DEX_MIN_VOLUME_24H  = 8_000
-DEX_MIN_VOLUME_1H   = 2_000
-DEX_MIN_BUYS        = 15
-DEX_MIN_BUY_RATIO   = 1.4
+DEX_MIN_LIQUIDITY   = 10_000
+DEX_MIN_VOLUME_24H  = 3_000
+DEX_MIN_VOLUME_1H   = 1_000
+DEX_MIN_BUYS        = 10
+DEX_MIN_BUY_RATIO   = 1.1
 DEX_MIN_MC          = 5_000
 DEX_MAX_MC          = 30_000_000
 
 # MODE 3 — MOMENTUM (big coins)
-MOM_MIN_SCORE       = 8
+MOM_MIN_SCORE       = 6
 MOM_MIN_MC          = 200_000
 MOM_MAX_MC          = 50_000_000
-MOM_MIN_LIQUIDITY   = 50_000
-MOM_MIN_VOLUME_1H   = 20_000
+MOM_MIN_LIQUIDITY   = 30_000
+MOM_MIN_VOLUME_1H   = 10_000
 MOM_MIN_VOLUME_5M   = 5_000
-MOM_MIN_BUYS        = 30
+MOM_MIN_BUYS        = 20
 MOM_MIN_BUY_RATIO   = 1.3
-MOM_VOL_SPIKE_RATIO = 3.0
-MOM_MIN_PRICE_CHANGE = 4.0
+MOM_VOL_SPIKE_RATIO = 2.0
+MOM_MIN_PRICE_CHANGE = 2.0
 
 # ─────────────────────────────────────────────
 #  PRO SIGNAL QUALITY GATES
 #  These must ALL pass for any alert to fire
 # ─────────────────────────────────────────────
 
-QUALITY_MIN_BUY_SELL_DELTA  = 5     # buys - sells must be > 5
+QUALITY_MIN_BUY_SELL_DELTA  = 2     # buys - sells must be > 5
 QUALITY_MIN_UNIQUE_MAKERS   = 0     # reserved for future
-QUALITY_NO_NEGATIVE_1H      = True  # skip if 1h price is negative
-QUALITY_MIN_VOL_TO_MC_RATIO = 0.05  # vol24h must be > 5% of MC
+QUALITY_NO_NEGATIVE_1H      = False # skip if 1h price is negative
+QUALITY_MIN_VOL_TO_MC_RATIO = 0.0   # vol24h must be > 5% of MC
 
 # ─────────────────────────────────────────────
 #  DEX CLASSIFICATION
